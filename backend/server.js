@@ -50,7 +50,7 @@ app.post('/csv', async (req, res) => {
         });
 
         jsonToCSV(response);
-        fs.readFile('response.csv', 'utf8', (err, data) => {
+        fs.readFile('query_response.csv', 'utf8', (err, data) => {
             if (err) {
                 console.error(err);
                 res.status(500).send('Erro ao ler o arquivo CSV.');

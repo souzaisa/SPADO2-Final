@@ -10,7 +10,7 @@ export function jsonToCSV(json) {
       return header + "\n" + rows;
     };
 
-    const folderPath = './src/csv_files/';
+    const folderPath = '';
     const fileName = 'query_response.csv';
     const fileContent = convertJSONToCSV(json);
 

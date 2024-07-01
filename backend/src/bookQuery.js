@@ -114,15 +114,19 @@ async function reviewsGroupByQuery(params, prisma) {
 
 //--------------------------------------- Aux Functions -----------------------------------
 function buildJoinObject(params) {
-    let joinObject = {
-        where: {
-            AND: params[0].filters
-        }
+    let joinObject = {}
+
+
+    // console.log(params[0].filters);
+    if (params[0].filters) {
+        let whereObject = {}
+        whereObject[params[0].logicalOperator] = buildWhereArray(params[0].filters);
+        joinObject['where'] = whereObject;
     }
 
     if (!params[1] && params[0].attributes) joinObject['select'] = params[0].attributes;    // Caso não exista outra tabela e o usuário tenha especificado atributos que deseja escolher
     if (params[0].take) joinObject['take'] = params[0].take;
-    if (params[0].orderBy) joinObject['orderBy'] = params[0].orderBy
+    if (params[0].orderBy) joinObject['orderBy'] = params[0].orderBy;
 
     if (params[1]) joinObject['include'] = buildIncludeObject(params);  // Caso exista pelo menos uma tabela para fazer JOIN
     return joinObject;
@@ -150,12 +154,9 @@ function buildIncludeObject(params) {
 }
 
 function buildAggregationObject(params) {
-    let aggregationObject = {
-        where: {
-            AND: params[0].filters
-        }
-    };
+    let aggregationObject = {};
 
+    if (params[0].filters) joinObject['where'] = buildWhereArray(params[0].filters);
     if (params[0].groupBy) aggregationObject['by'] = params[0].groupBy; // Caso seja uma operação com groupBy
     if (params[0].take) aggregationObject['take'] = params[0].take;
     if (params[0].orderBy) aggregationObject['orderBy'] = params[0].orderBy;
@@ -177,4 +178,29 @@ function buildAggregationObject(params) {
     }
     console.log(JSON.stringify(aggregationObject));
     return aggregationObject
+}
+
+function buildWhereArray(filters) {
+    try {
+        let whereArray = [];
+
+        if (filters) {
+            filters.forEach(filter => {
+                let attributeObject = {};
+                Object.keys(filter).forEach((attribute) => {
+                    let operations = {};
+                    Object.keys(filter[attribute]).forEach((operation) => {
+                        operations[operation] = filter[attribute][operation];
+                    });
+                    attributeObject[attribute] = operations;
+                });
+                whereArray.push(attributeObject);
+            });
+        }
+
+        console.log(JSON.stringify(whereArray));
+        return whereArray;
+    } catch (error) {
+        console.log(error.toString());
+    }
 }
