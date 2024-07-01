@@ -88,8 +88,8 @@ const ReportForm = ({ onGenerateReport }) => {
     const [responseFormat, setResponseFormat] = useState('table');
     const [take, setTake] = useState('');
     const [havingConditions, setHavingConditions] = useState([]);
-    const [filterLogicalOperator, setFilterLogicalOperator] = useState('and');
-    const [havingLogicalOperator, setHavingLogicalOperator] = useState('and');
+    const [filterLogicalOperator, setFilterLogicalOperator] = useState('AND');
+    const [havingLogicalOperator, setHavingLogicalOperator] = useState('AND');
 
 
     const handleTableSelection = (table) => {
@@ -189,67 +189,84 @@ const ReportForm = ({ onGenerateReport }) => {
         setGroupBy(prev => prev.filter((_, i) => i !== index));
     };
 
-    const handleOrderByChange = (index, field, order) => {
-        setOrderBy(prev => {
-            const updatedOrderBy = [...prev];
-            updatedOrderBy[index] = { field, order };
-            return updatedOrderBy;
-        });
+    const handleOrderByChange = (index, key, value) => {
+        const updatedOrderBy = [...orderBy];
+        updatedOrderBy[index] = {
+            ...updatedOrderBy[index],
+            [key]: value,
+        };
+        setOrderBy(updatedOrderBy);
     };
 
     const handleAddOrderBy = () => {
-        setOrderBy(prev => [...prev, { field: '', order: 'asc' }]);
+        setOrderBy([...orderBy, { field: '', order: 'asc' }]);
     };
 
-    const handleRemoveOrderBy = (index) => {
-        setOrderBy(prev => prev.filter((_, i) => i !== index));
+    const handleRemoveOrderBy = index => {
+        setOrderBy(orderBy.filter((_, i) => i !== index));
     };
 
+
+    const cleanObject = (obj) => {
+        return Object.fromEntries(
+            Object.entries(obj).filter(([_, v]) => {
+                if (Array.isArray(v)) {
+                    return v.length > 0; // Remove arrays vazios
+                }
+                if (typeof v === 'object' && v !== null) {
+                    return Object.keys(v).length > 0; // Remove objetos vazios
+                }
+                return v !== undefined && v !== null && v !== '';
+            })
+        );
+    };
     const handleSubmit = (e) => {
         e.preventDefault();
-    
+
         const getFieldName = (field) => field.split(' ')[0];
         const getTableNameFromField = (field) => field.substring(field.indexOf('(') + 1, field.indexOf(')')).trim();
-    
+
+        const convertValueToNumber = (value) => {
+            const num = Number(value);
+            return isNaN(num) ? value : num;
+        };
+
         // Agrupar filtros por tabela
         const filtersByTable = filters.reduce((acc, filter) => {
             const fieldName = getFieldName(filter.field);
             const tableName = getTableNameFromField(filter.field);
-    
+
             if (!acc[tableName]) {
                 acc[tableName] = { filters: [], logicalOperator: filterLogicalOperator };
             }
-    
+
             const filterObject = {
                 [fieldName]: {
                     [filter.operator]: filter.operator === 'in' || filter.operator === 'notIn'
-                        ? { value1: filter.value, value2: filter.value2 }
-                        : filter.value
+                        ? { value1: convertValueToNumber(filter.value), value2: convertValueToNumber(filter.value2) }
+                        : convertValueToNumber(filter.value)
                 }
             };
-    
+
             acc[tableName].filters.push(filterObject);
             return acc;
         }, {});
-    
+
         // Mapear groupBy e orderBy para cada tabela
         const getGroupByForTable = (tableName) => {
             return groupBy
                 .filter(field => getTableNameFromField(field) === tableName)
                 .map(field => getFieldName(field));
         };
-    
+
         const getOrderByForTable = (tableName) => {
             return orderBy
                 .filter(({ field }) => getTableNameFromField(field) === tableName)
-                .reduce((acc, { field, order }) => {
-                    if (field) {
-                        acc[getFieldName(field)] = order;
-                    }
-                    return acc;
-                }, {});
+                .map(({ field, order }) => ({
+                    [getFieldName(field)]: order
+                }));
         };
-    
+
         // Mapear having para cada tabela
         const getHavingForTable = (tableName) => {
             return havingConditions
@@ -258,14 +275,14 @@ const ReportForm = ({ onGenerateReport }) => {
                     if (having.field && having.operator) {
                         acc.push({
                             [getFieldName(having.field)]: {
-                                [having.operator]: having.value
+                                [having.operator]: convertValueToNumber(having.value)
                             }
                         });
                     }
                     return acc;
                 }, []);
         };
-    
+
         // Mapear aggregations para cada tabela
         const getAggregationsForTable = (tableName) => {
             return aggregations
@@ -280,29 +297,29 @@ const ReportForm = ({ onGenerateReport }) => {
                     return acc;
                 }, {});
         };
-    
+
         // Formatar os dados para cada tabela
         const formattedData = selectedTables.map(tableName => {
             const tableFieldsForTable = tableFields[tableName];
-    
+
             return {
                 tableName,
                 attributes: Object.fromEntries(
                     tableFieldsForTable.map(field => [getFieldName(field), selectedFields[field]])
                 ),
                 filters: filtersByTable[tableName]?.filters || [],
-                logicalOperator: filtersByTable[tableName]?.logicalOperator || undefined, // Adiciona o operador lógico para filtros
+                logicalOperator: filtersByTable[tableName]?.logicalOperator || undefined,
                 orderBy: getOrderByForTable(tableName),
                 groupBy: getGroupByForTable(tableName),
                 aggregations: getAggregationsForTable(tableName),
                 having: getHavingForTable(tableName),
-                havingLogicalOperator: havingLogicalOperator, // Adiciona o operador lógico para having
-                take: parseInt(take) || undefined  // Use `undefined` se `take` não estiver presente
+                havingLogicalOperator: havingLogicalOperator,
+                take: parseInt(take) || undefined
             };
         });
-    
-        // Preparar os dados para enviar ao backend
-        const sendToBackend = formattedData.map(tableData => ({
+
+        // Limpar os dados antes de enviar
+        const sendToBackend = formattedData.map(tableData => cleanObject({
             tableName: tableData.tableName,
             attributes: tableData.attributes,
             filters: tableData.filters,
@@ -314,7 +331,7 @@ const ReportForm = ({ onGenerateReport }) => {
             havingLogicalOperator: tableData.havingLogicalOperator,
             take: tableData.take
         }));
-    
+
         // Enviar os dados ao backend
         onGenerateReport({
             selectedTables: sendToBackend,
@@ -322,6 +339,10 @@ const ReportForm = ({ onGenerateReport }) => {
             responseFormat
         });
     };
+
+
+
+
 
     const getFieldType = (fieldName) => {
         const table = fieldName.substring(fieldName.indexOf('(') + 1, fieldName.indexOf(')')).trim();
@@ -443,9 +464,9 @@ const ReportForm = ({ onGenerateReport }) => {
                         <div className="form-group">
                             <label>Operador Lógico para Filtros:</label>
                             <select value={filterLogicalOperator} onChange={handleFilterLogicalOperatorChange}>
-                                <option value="and">AND</option>
-                                <option value="or">OR</option>
-                                <option value="not">NOT</option>
+                                <option value="AND">AND</option>
+                                <option value="OR">OR</option>
+                                <option value="NOT">NOT</option>
                             </select>
                         </div>
                     )}
@@ -564,42 +585,44 @@ const ReportForm = ({ onGenerateReport }) => {
                         <div className="form-group">
                             <label>Operador Lógico para Having:</label>
                             <select value={havingLogicalOperator} onChange={handleHavingLogicalOperatorChange}>
-                                <option value="and">AND</option>
-                                <option value="or">OR</option>
-                                <option value="not">NOT</option>
+                                <option value="AND">AND</option>
+                                <option value="OR">OR</option>
+                                <option value="NOT">NOT</option>
                             </select>
                         </div>
                     )}
                     <div className="form-group">
-                        <label>Ordenação (Order By):</label>
-                        <div>
-                            {orderBy.map((order, index) => (
-                                <div key={index} className="order-by-group">
-                                    <select
-                                        name="field"
-                                        value={order.field}
-                                        onChange={(e) => handleOrderByChange(index, e.target.value, order.order)}
-                                    >
-                                        <option value="">Selecione um campo</option>
-                                        {Object.keys(selectedFields).map((field) => (
-                                            <option key={field} value={field}>{field}</option>
+                        <label>Order By:</label>
+                        {orderBy.map((order, index) => (
+                            <div key={index} className="order-by-group">
+                                <select
+                                    value={order.field}
+                                    onChange={e => handleOrderByChange(index, 'field', e.target.value)}
+                                >
+                                    <option value="">Selecione um Campo</option>
+                                    {Object.keys(selectedFields)
+                                        .filter(field => selectedFields[field])
+                                        .map(field => (
+                                            <option key={field} value={field}>
+                                                {field}
+                                            </option>
                                         ))}
-                                    </select>
-                                    <select
-                                        name="order"
-                                        value={order.order}
-                                        onChange={(e) => handleOrderByChange(index, order.field, e.target.value)}
-                                    >
-                                        <option value="">Ordem</option>
-                                        {sortOrders.map(sortOrder => (
-                                            <option key={sortOrder.value} value={sortOrder.value}>{sortOrder.label}</option>
-                                        ))}
-                                    </select>
-                                    <button type="button" className="remove-button" onClick={() => handleRemoveOrderBy(index)}>Remover</button>
-                                </div>
-                            ))}
-                            <button type="button" className="add-order-by-button" onClick={handleAddOrderBy}>Adicionar Ordenação</button>
-                        </div>
+                                </select>
+                                <select
+                                    value={order.order}
+                                    onChange={e => handleOrderByChange(index, 'order', e.target.value)}
+                                >
+                                    <option value="asc">ASC</option>
+                                    <option value="desc">DESC</option>
+                                </select>
+                                <button type="button" onClick={() => handleRemoveOrderBy(index)}>
+                                    Remover
+                                </button>
+                            </div>
+                        ))}
+                        <button type="button" onClick={handleAddOrderBy} className="add-order-by-button">
+                            Adicionar Order By
+                        </button>
                     </div>
                     <div className="form-group">
                         <label>Limitar Busca (Take):</label>
